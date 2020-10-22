@@ -127,9 +127,9 @@ class Interface(tk.Tk):
 
             # grid.addWidget(pw,0,0)
 
-            if len(ChannelList.names)>1:
+            if len(task.clist.names)>1:
                 curves = []
-                for i in range(len(ChannelList.names)):
+                for i in range(len(task.clist.names)):
                     pen = pg.mkPen(pg.intColor(i))
                     curves.append(pW.plot(pen=pen))
                 while not myapp.close:
@@ -149,9 +149,9 @@ class Interface(tk.Tk):
             r = task.acquire()
             task.close()
             r = pd.DataFrame(r)
-            if len(ChannelList.names) > 1:
+            if len(task.clist.names) > 1:
                 r = r.transpose()
-                r.columns = ChannelList.names
+                r.columns = task.clist.names
             r.plot()
             plt.show()
             
@@ -174,7 +174,7 @@ class Interface(tk.Tk):
         file = open(path, 'w')
         variables = list(map(lambda x: str(x.get()), self.variables))
         file.write('\n'.join(variables) + '\n')
-        file.write(ChannelList().__repr__())
+        file.write(task.clist.__repr__())
         file.close()
 
     def open_task(self):
@@ -186,10 +186,10 @@ class Interface(tk.Tk):
             variable.set(file.readline().replace('\n',''))
         channels = file.readline().replace("'",'"')
         file.close()
-        ChannelList().clear()
-        ChannelList.importChannels(json.loads(channels))
+        task.clist.clear()
+        task.importChannels(json.loads(channels))
         self.notebook.lb.delete(0, tk.END)
-        self.notebook.lb.insert(tk.END, *ChannelList.names)
+        self.notebook.lb.insert(tk.END, *task.clist.names)
         self.notebook.channel_update = False
         self.max_InputRange.set('')
         self.min_InputRange.set('')
@@ -344,7 +344,7 @@ class MainNotebook(ttk.Notebook):
         tk.Label(ts_frame, text='Rate (Hz)', 
                  anchor='w').grid(row=0, column=2, padx=5, sticky='we')
         AqOptions = tk.OptionMenu(ts_frame, interface.acquisition_mode, 
-                                  *Task.acquisition_mode.options)
+                                  *task.acquisition_mode.options)
         AqOptions.config(width=25)
         AqOptions.grid(row=1, column=0, padx=5)
         tk.Entry(ts_frame, textvariable=interface.samples_to_read, 
@@ -599,13 +599,15 @@ class MainNotebook(ttk.Notebook):
     def add_channel(self):
         def add_chan_function():
             channel_name = '{}/{}'.format(device_name.get(), dev_channel.get())
-            if ChannelList().find(channel_name) == None:
-                channel = Channel(name=channel_name)
+            self.selected_channel = channel_name
+            if task.clist.find(channel_name) == None:
+                channel = task.add_channel(cname=channel_name)
                 self.lb.delete(0, tk.END)
-                self.lb.insert(tk.END, *ChannelList.names)
+                self.lb.insert(tk.END, *task.clist.names)
+                self.channel_update = False
                 self.root.max_InputRange.set(channel.maxInputRange)
                 self.root.min_InputRange.set(channel.minInputRange)
-                self.selected_channel = channel_name
+                self.channel_update = True
         add_window = tk.Toplevel(self.root)
         tk.Label(add_window, text='Device Name:').pack()
         device_name = tk.StringVar(self.root, value='Dev3')
@@ -619,9 +621,9 @@ class MainNotebook(ttk.Notebook):
 
     def remove_channel(self):
         index = self.lb.curselection()[0]
-        ChannelList().pop(index)
+        task.clist.pop(index)
         self.lb.delete(0, tk.END)
-        self.lb.insert(tk.END, *ChannelList.names)
+        self.lb.insert(tk.END, *task.clist.names)
         self.selected_channel = None
 
     def select_channel(self, event):
@@ -629,8 +631,8 @@ class MainNotebook(ttk.Notebook):
         interface = self.root
         if len(self.lb.curselection()) > 0:
             index = self.lb.curselection()[0]
-            self.selected_channel = ChannelList.names[index]
-            channel = ChannelList().find(self.selected_channel)
+            self.selected_channel = task.clist.names[index]
+            channel = task.clist.find(self.selected_channel)
             self.channel_update = False
             interface.max_InputRange.set(channel.maxInputRange)
             interface.min_InputRange.set(channel.minInputRange)
@@ -640,13 +642,13 @@ class MainNotebook(ttk.Notebook):
     def set_channel(self):
         interface = self.root
         if self.selected_channel is not None and self.channel_update:
-            channel = ChannelList().find(self.selected_channel)
+            channel = task.clist.find(self.selected_channel)
             channel.maxInputRange = int(interface.max_InputRange.get())
             channel.minInputRange = int(interface.min_InputRange.get())
         return True
 
     def triggerChanged(self, event):
-        new_choices = ['APFI0', 'APFI1'] + ChannelList.names
+        new_choices = ['APFI0', 'APFI1'] + task.clist.names
         source = interface.stt_trigger_source.get()
         for widget in self.stt_tg_widgets:
             widget.pack_forget()
@@ -672,7 +674,7 @@ class MainNotebook(ttk.Notebook):
             interface.stt_trigger_source.set(source)
     
     def refTriggerChanged(self, event):
-        new_choices = ['APFI0', 'APFI1'] + ChannelList.names
+        new_choices = ['APFI0', 'APFI1'] + task.clist.names
         source = interface.ref_trigger_source.get()
         for widget in self.ref_tg_widgets:
             widget.pack_forget()

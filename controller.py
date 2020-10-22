@@ -22,18 +22,6 @@ dict_ = {'Rising': cts.Slope.RISING,
          'open': cts.LoggingOperation.OPEN_OR_CREATE,
          }
 
-class _Singleton(object):
-    """Singleton class to work as other classes parent.
-    
-    If a singleton object already exist, the attemp of creating another 
-    one will return the existing instance.
-    """
-    __instance = None
-    def __new__(cls):
-        if cls.__instance is None:
-            cls.__instance = super(_Singleton, cls).__new__(cls)
-        return cls.__instance
-
 class _Config(object):
     """Support class to tkinter OptionMenu, that can keep not only
     selected value but also a list of valid options.
@@ -66,20 +54,19 @@ class _RawTrigger(object):
                                  'Entering Window', 'Leaving Window')
         self.edge = _Config('Rising', 'Rising', 'Falling')
 
-class StartTrigger(_Singleton, _RawTrigger):
+class StartTrigger(_RawTrigger):
     """Start trigger configuration"""
     def __init__(self):
         super(StartTrigger, self).__init__()
 
-class RefTrigger(_Singleton, _RawTrigger):
+class RefTrigger(_RawTrigger):
     """Reference trigger configuration"""
     def __init__(self):
         super(RefTrigger, self).__init__()
         self.source.options.append('Voltage')
         preTriggerSamples = '10000'
 
-class ChannelList(_Singleton, list):
-    names = []
+class _ChannelList(list):
     """A singleton list of channels to be added to the task 
     before executing the task.
 
@@ -89,8 +76,8 @@ class ChannelList(_Singleton, list):
     in the ChannelList.
     """
     def __init__(self):
-        super(ChannelList, self).__init__
-        self.names = ChannelList.names
+        super(_ChannelList, self).__init__
+        self.names = []
 
     def find(self, name):
         for channel in self:
@@ -103,89 +90,89 @@ class ChannelList(_Singleton, list):
         self.remove(channel_name)
 
     def remove(self, channel_name):
-        for channel in ChannelList():
+        for channel in self:
             if channel.name == channel_name:
-                super(ChannelList, self).remove(channel)
-
-    def importChannels(channels):
-        for channel in channels:
-            c = Channel(name=channel['name'], maxInputRange=channel['max'],
-                        minInputRange=channel['min'])
+                super(_ChannelList, self).remove(channel)
 
     def append(self, channel):
-        super(ChannelList,self).append(channel)
+        super(_ChannelList,self).append(channel)
         self.names.append(channel.name)
         self.names.sort()
 
     def clear(self):
         self.names.clear()
-        super(ChannelList, self).clear()
+        super(_ChannelList, self).clear()
 
 class Channel(object):
     """Create a Channel to be included in the DAQ Task.
 
     Channels are object that are automatically added to the 
-    ChannelList when created. The Channel object can only be 
-    created if there is no other Channel with the same name 
-    in the ChannelList.
+    ChannelList clist when created. The Channel object can 
+    only be created if there is no other Channel with the 
+    same name in the list.
     """
-    def __new__(cls, *, name, **kwargs):
-        if not ChannelList().find(name):
+    def __new__(cls, clist, name, *kwargs):
+        if not clist.find(name):
             x = super(Channel, cls).__new__(cls)
             return x 
         print('channel <{}> already in task'.format(name))
         return None    
 
-    def __init__(self, *, name, maxInputRange=10, minInputRange=-10):
+    def __init__(self, clist, name, maxInputRange, minInputRange):
         self.name = name
         self.maxInputRange = maxInputRange
         self.minInputRange = minInputRange
-        ChannelList().append(self)
+        clist.append(self)
 
     def __repr__(self):
         dict_ = {'name': self.name, 'max': self.maxInputRange, 
                  'min': self.minInputRange}
         return dict_.__repr__()     
 
-class Task(_Singleton):
+class Task():
     """docstring for Task"""
-
-    ##Setting Variables
-    channel_list = []
-    ##Timing Variables
-    acquisition_mode = _Config('Continuous Samples', '1 Sample (On Demand)', 
-                               '1 Sample (HW Timed)', 'N Samples', 
-                               'Continuous Samples')
-    samples_to_read = 90000
-    rate = 10000
-    ## Triggering Variables
-    stt_trigger = StartTrigger()
-    ref_trigger = RefTrigger()
-    ## Advanced Timing Variables
-    timeout = 10
-    clock_type = _Config('Internal', 'Internal')
-    clock_source = _Config('PFI0', 'PFI0')
-    active_edge = _Config('Falling', 'Rising', 'Falling')
-    ##Logging Variables
-    tdmsLogging = None
-    tdmsFilepath = None
-    append = None
-    logging_mode = _Config('Log and Read', 'Log and Read', 'Log Only')
-    group_name = None
-    sample_per_file = '0'
-    span = None
-
-    data = None
-
 
     def __init__(self, *arg):
         super(Task, self).__init__()
         self.arg = arg
+        ##Setting Variables
+        self.clist = _ChannelList()
+        ##Timing Variables
+        self.acquisition_mode = _Config('Continuous Samples', '1 Sample (On Demand)', 
+                                   '1 Sample (HW Timed)', 'N Samples', 
+                                   'Continuous Samples')
+        self.samples_to_read = 90000
+        self.rate = 10000
+        ## Triggering Variables
+        self.stt_trigger = StartTrigger()
+        self.ref_trigger = RefTrigger()
+        ## Advanced Timing Variables
+        self.timeout = 10
+        self.clock_type = _Config('Internal', 'Internal')
+        self.clock_source = _Config('PFI0', 'PFI0')
+        self.active_edge = _Config('Falling', 'Rising', 'Falling')
+        ##Logging Variables
+        self.tdmsLogging = None
+        self.tdmsFilepath = None
+        self.append = None
+        self.logging_mode = _Config('Log and Read', 'Log and Read', 'Log Only')
+        self.group_name = None
+        self.sample_per_file = '0'
+        self.span = None
+
+    def add_channel(self, *, cname, maxInputRange=10, minInputRange=-10):
+        return Channel(self.clist, cname, maxInputRange, minInputRange)
+
+
+    def importChannels(self, channels):
+        for channel in channels:
+            c = Channel(self.clist, channel['name'], 
+                        channel['max'], channel['min'])
 
     def config(self):
         # Add channels to Task
         self.task = nidaqmx.Task()
-        for channel in ChannelList():
+        for channel in self.clist:
             self.task.ai_channels.add_ai_voltage_chan(
                 channel.name, 
                 min_val=channel.minInputRange,
@@ -254,39 +241,9 @@ class Task(_Singleton):
             number_of_samples_per_channel=self.samples_to_read,
             timeout=self.timeout)
         return np.array(r)
-        # Task.data = pd.DataFrame(r)
-        # if len(channel_list) > 1:
-        #     Task.data = Task.data.transpose()
-        #     Task.data.columns = channel_list
-        # Task.data.plot()
 
     def close(self):
         self.task.close()
 
 if __name__ == '__main__':
     daq=Task()
-    print(dict_[daq.acquisition_mode.get()])
-    # c1 = Channel(name = "c1")
-    # c2 = Channel(name = "c2")
-    # # c3 = Channel(name = "c1")
-    # cl1 = ChannelList()
-    # cl2 = ChannelList()
-
-    # print(cl1)
-    # print(cl1.names)
-    # print("before clear", cl1._Singleton__instance is cl1)
-    # cl1.clear()
-    # print("after clear", cl1._Singleton__instance is cl1)
-    # c2 = Channel(name = "c3")
-    # print("after new channel", cl1._Singleton__instance is cl1)
-    # cl3 = ChannelList()
-    # print("after new channel list", cl1._Singleton__instance is cl1)
-    # c2 = Channel(name = "c1")
-    # print("after new channel", cl1._Singleton__instance is cl1)
-    # print(cl1)
-    # print(cl3 is cl1)
-    # # cl3 = ChannelList()
-    # # cl1.append(c1)
-    # # print(cl1,cl2,cl3)
-    # # print(cl2.names)
-    # # print(cl1._Singleton__instance is cl1)
