@@ -132,14 +132,15 @@ class Channel(object):
 class Task():
     """docstring for Task"""
 
-    def __init__(self, *arg):
+    def __init__(self):
         super(Task, self).__init__()
-        self.arg = arg
         ##Setting Variables
         self.clist = _ChannelList()
         ##Timing Variables
-        self.acquisition_mode = _Config('Continuous Samples', '1 Sample (On Demand)', 
-                                   '1 Sample (HW Timed)', 'N Samples', 
+        self.acquisition_mode = _Config('Continuous Samples', 
+                                   '1 Sample (On Demand)', 
+                                   '1 Sample (HW Timed)', 
+                                   'N Samples', 
                                    'Continuous Samples')
         self.samples_to_read = 90000
         self.rate = 10000

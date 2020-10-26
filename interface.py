@@ -29,19 +29,26 @@ class GUIForm(QtWidgets.QWidget):
         event.accept() # let the window close
 
 class Interface(tk.Tk):
+    rate = 10000
+    samples_to_read = 90000
+    timeout = 10
+    device_name = ''
     def __init__(self):
         super(Interface, self).__init__()
         self.winfo_toplevel().title('NiDAQmx Controller')
         self.set_menubar()
         self.tk_setPalette(background='white')
+        self.mode = 'ai'
 
+        self.device_name = tk.StringVar(self, value=Interface.device_name)
         # Setting Variables
         self.max_InputRange = tk.StringVar(self, value=10)
         self.min_InputRange = tk.StringVar(self, value=-10)
         # Timing Variables
         self.acquisition_mode = tk.StringVar(self, value='Continuous Samples')
-        self.samples_to_read = tk.StringVar(self, value='90000')
-        self.rate = tk.StringVar(self, value='10000')
+        self.samples_to_read = tk.StringVar(self, 
+                                            value=Interface.samples_to_read)
+        self.rate = tk.StringVar(self, value=Interface.rate)
         # Start trigger
         self.stt_trigger_source = tk.StringVar(self, value='APFI0')
         self.stt_trigger_type = tk.StringVar(self, value='<None>')
@@ -64,7 +71,7 @@ class Interface(tk.Tk):
         self.ref_trigger_edge = tk.StringVar(self, value='Rising')
         self.preTriggerSamples = tk.StringVar(self, value='10000')
         # Advanced Timing Variables
-        self.timeout = tk.StringVar(self, value=10)
+        self.timeout = tk.StringVar(self, value=Interface.timeout)
         # Logging Variables
         self.TDMSLogging = tk.IntVar(self)
         self.TDMS_filepath = tk.StringVar(self)
@@ -103,8 +110,19 @@ class Interface(tk.Tk):
         # Run Task Button
         self.run_frame = tk.Frame(self, padx=20, pady=10)
         self.run_frame.pack(fill=tk.BOTH)
-        tk.Button(self.run_frame, text='Run',
-                  width=10, command=self.run).pack(side='right')
+        tk.Button(self.run_frame, text='Ok', width=10,
+                  command=self.set_and_close).pack(side='right')
+        self.run_button = tk.Button(self.run_frame, text='Run', width=10, 
+                                    command=self.run)
+        self.run_button.pack(side='right')
+
+    def set_and_close(self):
+        ...
+        msgbox = tk.messagebox.askquestion('confirmantion','This task will ' \
+                'be configured and application will close: are you sure you ' \
+                'want do continue?')
+        if msgbox == 'yes':
+            self.destroy()
 
     def run(self):
         task.samples_to_read = int(self.samples_to_read.get())
@@ -166,6 +184,13 @@ class Interface(tk.Tk):
         self.filemenu.add_command(label='Exit', command=self.destroy)
         self.menubar.add_cascade(label='File', menu=self.filemenu)
 
+        self.modemenu = tk.Menu(self.menubar, tearoff=0)
+        self.modemenu.add_command(label='Input Voltage', state=tk.DISABLED, 
+                                  command=self.change_mode)
+        self.modemenu.add_command(label='Output Voltage', 
+                                  command=self.change_mode)
+        self.menubar.add_cascade(label='Mode', menu=self.modemenu)
+
     def save_task(self):
         path = filedialog.asksaveasfilename(title='Select file', 
                                             defaultextension='.task',
@@ -196,6 +221,33 @@ class Interface(tk.Tk):
         self.notebook.channel_update = True
         self.notebook.selected_channel=None
 
+    def change_mode(self):
+        if self.mode == 'ai':
+            self.modemenu.entryconfig('Input Voltage', state='normal')
+            self.modemenu.entryconfig('Output Voltage', state='disabled')
+            self.mode = 'ao'
+            self.notebook.voltage_label['text'] = 'Voltage Output Setup'
+            self.notebook.acq_label['text'] = 'Generation Mode'
+            self.notebook.tb1_SigInRange.label['text'] = 'Signal Output Range'
+            self.notebook.tb2_RefTrigger.pack_forget()
+            self.notebook.tab(3, state='disabled')
+            self.notebook.ns_label['text']='Samples to Write'
+            self.run_button['state']='disabled'
+        else:
+            self.modemenu.entryconfig('Input Voltage', state='disabled')
+            self.modemenu.entryconfig('Output Voltage', state='normal')
+            self.mode = 'ai'
+            self.notebook.voltage_label['text'] = 'Voltage Input Setup'
+            self.notebook.acq_label['text'] = 'Acquisition Mode'
+            self.notebook.tb1_SigInRange.label['text'] = 'Signal Input Range'
+            self.notebook.tb2_RefTrigger.pack()
+            self.notebook.tb2_RefTrigger.set_title()
+            self.notebook.tab(3, state='normal')
+            self.notebook.ns_label['text']='Samples to Read'
+            self.run_button['state']='normal'
+        self.update()
+
+
 class BDFrame(tk.Frame):
     '''Frame with title and border'''
     def __init__(self, root_, title):
@@ -216,6 +268,10 @@ class BDFrame(tk.Frame):
         x = self.winfo_x()
         y = self.winfo_y()
         self.label.place(x=x+10, y=y-10)
+
+    def pack_forget(self):
+        super(BDFrame,self).pack_forget()
+        self.label.place_forget()
 
 class MainNotebook(ttk.Notebook):
     """docstring for MainNotebook"""
@@ -260,7 +316,8 @@ class MainNotebook(ttk.Notebook):
             self.tb2_RefTrigger['height'] = height
             root.update()
             self.tb2_StartTrigger.set_title()
-            self.tb2_RefTrigger.set_title()
+            if root.mode == 'ai':
+                self.tb2_RefTrigger.set_title()
             if interface.acquisition_mode.get() == 'Continuous Samples':
                 self.ref_TgOptions['state'] = tk.DISABLED
                 interface.ref_trigger_type.set('<None>')
@@ -300,8 +357,9 @@ class MainNotebook(ttk.Notebook):
         self.lb.grid(row=1, column=0, columnspan=4)
         csetup = tk.Frame(cs_frame)
         csetup.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
-        tk.Label(csetup, text='Voltage Input Setup', font=('Helvetica',14), 
-                 anchor='w').pack(side=tk.TOP, fill=tk.BOTH)
+        self.voltage_label = tk.Label(csetup, text='Voltage Input Setup', 
+                                 font=('Helvetica',14), anchor='w')
+        self.voltage_label.pack(side=tk.TOP, fill=tk.BOTH)
         voltage_IS = ttk.Notebook(csetup)
         setting_tab = tk.Frame(voltage_IS)
         calibration_tab = tk.Frame(voltage_IS)
@@ -322,7 +380,7 @@ class MainNotebook(ttk.Notebook):
                              textvariable=interface.max_InputRange,
                              validate="focusout", 
                              validatecommand=self.set_channel)
-        self.max_Input.grid(row=0, column=1, pady=5)
+        self.max_Input.grid(row=0, column=1)
         self.min_Input = tk.Entry(self.sirange_frame, width=10,
                              justify='right',
                              textvariable=interface.min_InputRange,
@@ -331,16 +389,17 @@ class MainNotebook(ttk.Notebook):
         self.min_Input.grid(row=1, column=1)
         #Scaled Units Frame
         self.sir_ScaledU = BDFrame(self.sirange_frame, 'Scaled Units')
-        self.sir_ScaledU.grid(row=0, column=2, rowspan=2, padx=10)
+        self.sir_ScaledU.grid(row=0, column=2, rowspan=2, padx=10, pady=5)
         scaledUnits_frame = tk.Frame(self.sir_ScaledU)
         scaledUnits_frame.pack(padx=10, pady=10, fill=tk.BOTH)
         tk.OptionMenu(scaledUnits_frame, interface.scaled_units, 'volts').pack()
 
         #Time Setting Frame
-        tk.Label(ts_frame, text='Acquisition Mode', 
-                 anchor='w').grid(row=0, column=0, padx=5, sticky='we')
-        tk.Label(ts_frame, text='Sample to Read', 
-                 anchor='w').grid(row=0, column=1, padx=5, sticky='we')
+        self.acq_label = tk.Label(ts_frame, text='Acquisition Mode', 
+                                  anchor='w')
+        self.acq_label.grid(row=0, column=0, padx=5, sticky='we')
+        self.ns_label = tk.Label(ts_frame, text='Samples to Read', anchor='w')
+        self.ns_label.grid(row=0, column=1, padx=5, sticky='we')
         tk.Label(ts_frame, text='Rate (Hz)', 
                  anchor='w').grid(row=0, column=2, padx=5, sticky='we')
         AqOptions = tk.OptionMenu(ts_frame, interface.acquisition_mode, 
@@ -598,7 +657,8 @@ class MainNotebook(ttk.Notebook):
 
     def add_channel(self):
         def add_chan_function():
-            channel_name = '{}/{}'.format(device_name.get(), dev_channel.get())
+            channel_name = '{}/{}'.format(self.root.device_name.get(), 
+                                          dev_channel.get())
             self.selected_channel = channel_name
             if task.clist.find(channel_name) == None:
                 channel = task.add_channel(cname=channel_name)
@@ -610,9 +670,8 @@ class MainNotebook(ttk.Notebook):
                 self.channel_update = True
         add_window = tk.Toplevel(self.root)
         tk.Label(add_window, text='Device Name:').pack()
-        device_name = tk.StringVar(self.root, value='Dev3')
         tk.Entry(add_window, justify=tk.CENTER, 
-                 textvariable=device_name).pack()
+                 textvariable=self.root.device_name).pack()
         tk.Label(add_window, text='Channel:').pack()
         dev_channel = tk.StringVar(self.root, value='ai0')
         channels_numbers = ['ai{}'.format(str(i)) for i in range(10)]
@@ -733,10 +792,19 @@ class MainNotebook(ttk.Notebook):
                                                   ('all files','*.*')
                                                   )))
 
-if __name__ == '__main__':
+def assistant(device_name):
+    Interface.device_name = device_name
     interface = Interface()
     interface.mainloop()
-exit()
+    task.config()
+    return (task, interface.rate.get(), interface.samples_to_read.get(),
+            interface.timeout.get())
+
+if __name__ == '__main__':
+    Interface.samples_to_read = 100
+    Interface.device_name = 'Dev3'
+    interface = Interface()
+    interface.mainloop()
 
 
 
