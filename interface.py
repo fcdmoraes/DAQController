@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +10,7 @@ import sys
 
 from controller import *
 
-task = Task()
+task = None
 
 class GUIForm(QtWidgets.QWidget):
     '''Widget class for continuous mode data visualisation'''
@@ -30,13 +30,14 @@ class GUIForm(QtWidgets.QWidget):
 
 class Interface(tk.Tk):
     rate = 10000
-    samples_to_read = 90000
+    samples_to_read = 1000
     timeout = 10
     device_name = ''
     def __init__(self):
         super(Interface, self).__init__()
         self.winfo_toplevel().title('NiDAQmx Controller')
-        self.set_menubar()
+        self.menu = Menubar(self)
+        self.config(menu=self.menu)
         self.tk_setPalette(background='white')
         self.mode = 'ai'
 
@@ -54,8 +55,8 @@ class Interface(tk.Tk):
         self.stt_trigger_type = tk.StringVar(self, value='<None>')
         self.stt_trigger_slope = tk.StringVar(self, value='Rising')
         self.stt_trigger_level = tk.StringVar(self, value='0')
-        self.stt_window_top = tk.StringVar(self, value='0')
-        self.stt_window_bot = tk.StringVar(self, value='0')
+        self.stt_trigger_wtop = tk.StringVar(self, value='0')
+        self.stt_trigger_wbot = tk.StringVar(self, value='0')
         self.stt_trigger_condition = tk.StringVar(self, 
                                                   value='Entering Window')
         self.stt_trigger_edge = tk.StringVar(self, value='Rising')
@@ -64,12 +65,12 @@ class Interface(tk.Tk):
         self.ref_trigger_type = tk.StringVar(self, value='<None>')
         self.ref_trigger_slope = tk.StringVar(self, value='Rising')
         self.ref_trigger_level = tk.StringVar(self, value='0')
-        self.ref_window_top = tk.StringVar(self, value='0')
-        self.ref_window_bot = tk.StringVar(self, value='0')
+        self.ref_trigger_wtop = tk.StringVar(self, value='0')
+        self.ref_trigger_wbot = tk.StringVar(self, value='0')
         self.ref_trigger_condition = tk.StringVar(self, 
                                                   value='Entering Window')
         self.ref_trigger_edge = tk.StringVar(self, value='Rising')
-        self.preTriggerSamples = tk.StringVar(self, value='10000')
+        self.ref_trigger_presamp = tk.StringVar(self, value='10000')
         # Advanced Timing Variables
         self.timeout = tk.StringVar(self, value=Interface.timeout)
         # Logging Variables
@@ -88,84 +89,84 @@ class Interface(tk.Tk):
         ### not in use
         self.scaled_units = tk.StringVar(self, value='Volts')
 
-        self. variables = [self.acquisition_mode, self.samples_to_read, 
-                           self.rate, self.stt_trigger_source, 
-                           self.stt_trigger_type, self.stt_trigger_slope, 
-                           self.stt_trigger_level, self.stt_window_top, 
-                           self.stt_window_bot, self.stt_trigger_condition, 
-                           self.stt_trigger_edge, self.ref_trigger_source, 
-                           self.ref_trigger_type, self.ref_trigger_slope, 
-                           self.ref_trigger_level, self.ref_window_top, 
-                           self.ref_window_bot, self.ref_trigger_condition, 
-                           self.ref_trigger_edge, self.preTriggerSamples, 
-                           self.timeout, self.clock_type, self.clock_source, 
-                           self.active_edge, self.TDMSLogging, 
-                           self.TDMS_filepath, self.append_data, 
-                           self.logging_mode, self.group_name, 
-                           self.sample_per_file, self.span
-                           ]
+        self.variables = ['acquisition_mode', 'samples_to_read', 'rate', 
+            'stt_trigger_source', 'stt_trigger_type', 'stt_trigger_slope', 
+            'stt_trigger_level', 'stt_trigger_wtop', 'stt_trigger_wbot', 
+            'stt_trigger_condition', 'stt_trigger_edge', 'ref_trigger_source', 
+            'ref_trigger_type', 'ref_trigger_slope', 'ref_trigger_level', 
+            'ref_trigger_wtop', 'ref_trigger_wbot', 'ref_trigger_condition', 
+            'ref_trigger_edge', 'ref_trigger_presamp', 'timeout', 'clock_type', 
+            'clock_source', 'active_edge', 'TDMSLogging', 'TDMS_filepath', 
+            'append_data', 'logging_mode', 'group_name', 'sample_per_file', 
+            'span']
 
         self.notebook = MainNotebook(self)
 
         # Run Task Button
-        self.run_frame = tk.Frame(self, padx=20, pady=10)
-        self.run_frame.pack(fill=tk.BOTH)
-        tk.Button(self.run_frame, text='Ok', width=10,
+        run_frame = tk.Frame(self, padx=20, pady=10)
+        run_frame.pack(fill=tk.BOTH)
+        tk.Button(run_frame, text='Ok', width=10,
                   command=self.set_and_close).pack(side='right')
-        self.run_button = tk.Button(self.run_frame, text='Run', width=10, 
+        self.run_button = tk.Button(run_frame, text='Run', width=10, 
                                     command=self.run)
         self.run_button.pack(side='right')
 
     def set_and_close(self):
-        ...
-        msgbox = tk.messagebox.askquestion('confirmantion','This task will ' \
+        msgbox = messagebox.askquestion('confirmantion','This task will ' \
                 'be configured and application will close: are you sure you ' \
                 'want do continue?')
         if msgbox == 'yes':
             self.destroy()
 
-    def run(self):
-        task.samples_to_read = int(self.samples_to_read.get())
-        task.rate = int(self.rate.get())
+    def config_task(self):
+        for key, value in self.__dict__.items():
+            if key in self.variables:
+                try:
+                    value = int(value.get())
+                except:
+                    value = value.get()
+                if 'trigger' in key:
+                    trigger = task.__dict__[key[0:11]]
+                    variable = key[12:]
+                    trigger.__dict__[variable].set(value)
+                elif key in vars(task):
+                    task.__dict__[key].set(value)
         task.config()
-        print('configured')
+
+    def run(self):
+        self.notebook.set_channel()
+        self.config_task()
         if self.acquisition_mode.get() == 'Continuous Samples':
-            def close_window():
-                global close 
-                close = True
-                print('closed')
-            close = False
-            
             app = QtGui.QApplication(sys.argv)
             myapp = GUIForm()
-            # myapp.show()
-
+            maxrange = minrange = 0
+            for channel in task.clist:
+                if channel.maxInputRange > maxrange:
+                    maxrange = channel.maxInputRange
+                if channel.minInputRange < minrange:
+                    minrange = channel.minInputRange
             pW = myapp.chart
-            pW.setRange(QtCore.QRectF(0, -10, int(self.samples_to_read.get()), 20))
-
-            # grid.addWidget(pw,0,0)
-
+            pW.setRange(QtCore.QRectF(0, minrange, 
+                                      int(self.samples_to_read.get()), 
+                                      maxrange-minrange))
             if len(task.clist.names)>1:
                 curves = []
                 for i in range(len(task.clist.names)):
                     pen = pg.mkPen(pg.intColor(i))
                     curves.append(pW.plot(pen=pen))
                 while not myapp.close:
-                    data = task.acquire()
+                    data = task.read()
                     for i in range(len(curves)):
                         curves[i].setData(data[i])
                     app.processEvents()
             else:
                 curve = pW.plot()
                 while not myapp.close:
-                    data = task.acquire()
+                    data = task.read()
                     curve.setData(data)
                     app.processEvents()
-            task.close()
-
         else:
-            r = task.acquire()
-            task.close()
+            r = task.read()
             r = pd.DataFrame(r)
             if len(task.clist.names) > 1:
                 r = r.transpose()
@@ -173,32 +174,15 @@ class Interface(tk.Tk):
             r.plot()
             plt.show()
             
-    def set_menubar(self):
-        ''' Menu '''
-        self.menubar = tk.Menu(self)
-        self.config(menu=self.menubar)
-
-        self.filemenu = tk.Menu(self.menubar, tearoff=0)
-        self.filemenu.add_command(label='Save Task', command=self.save_task)
-        self.filemenu.add_command(label='Open Task', command=self.open_task)
-        self.filemenu.add_command(label='Exit', command=self.destroy)
-        self.menubar.add_cascade(label='File', menu=self.filemenu)
-
-        self.modemenu = tk.Menu(self.menubar, tearoff=0)
-        self.modemenu.add_command(label='Input Voltage', state=tk.DISABLED, 
-                                  command=self.change_mode)
-        self.modemenu.add_command(label='Output Voltage', 
-                                  command=self.change_mode)
-        self.menubar.add_cascade(label='Mode', menu=self.modemenu)
-
     def save_task(self):
         path = filedialog.asksaveasfilename(title='Select file', 
                                             defaultextension='.task',
                                             filetypes=(('task','*.task'),
                                                        ('all files','*.*')))
         file = open(path, 'w')
-        variables = list(map(lambda x: str(x.get()), self.variables))
-        file.write('\n'.join(variables) + '\n')
+        variables = {key: value.get() for key, value in self.__dict__.items() 
+                     if key in self.variables}
+        file.write(str(variables)+'\n')
         file.write(task.clist.__repr__())
         file.close()
 
@@ -207,8 +191,9 @@ class Interface(tk.Tk):
                                         filetypes=(('task','*.task'),
                                                    ('all files','*.*')))
         file = open(path, 'r')
-        for variable in self.variables:
-            variable.set(file.readline().replace('\n',''))
+        data = file.readline().replace("'",'"')
+        for key, value in json.loads(data).items():
+            self.__dict__[key].set(value)
         channels = file.readline().replace("'",'"')
         file.close()
         task.clist.clear()
@@ -223,8 +208,8 @@ class Interface(tk.Tk):
 
     def change_mode(self):
         if self.mode == 'ai':
-            self.modemenu.entryconfig('Input Voltage', state='normal')
-            self.modemenu.entryconfig('Output Voltage', state='disabled')
+            self.menu.modemenu.entryconfig('Input Voltage', state='normal')
+            self.menu.modemenu.entryconfig('Output Voltage', state='disabled')
             self.mode = 'ao'
             self.notebook.voltage_label['text'] = 'Voltage Output Setup'
             self.notebook.acq_label['text'] = 'Generation Mode'
@@ -234,8 +219,8 @@ class Interface(tk.Tk):
             self.notebook.ns_label['text']='Samples to Write'
             self.run_button['state']='disabled'
         else:
-            self.modemenu.entryconfig('Input Voltage', state='disabled')
-            self.modemenu.entryconfig('Output Voltage', state='normal')
+            self.menu.modemenu.entryconfig('Input Voltage', state='disabled')
+            self.menu.modemenu.entryconfig('Output Voltage', state='normal')
             self.mode = 'ai'
             self.notebook.voltage_label['text'] = 'Voltage Input Setup'
             self.notebook.acq_label['text'] = 'Acquisition Mode'
@@ -247,6 +232,22 @@ class Interface(tk.Tk):
             self.run_button['state']='normal'
         self.update()
 
+class Menubar(tk.Menu):
+    """docstring for Menu"""
+    def __init__(self, root):
+        super(Menubar, self).__init__()
+        self.filemenu = tk.Menu(self, tearoff=0)
+        self.filemenu.add_command(label='Save Task', command=root.save_task)
+        self.filemenu.add_command(label='Open Task', command=root.open_task)
+        self.filemenu.add_command(label='Exit', command=root.destroy)
+        self.add_cascade(label='File', menu=self.filemenu)
+
+        self.modemenu = tk.Menu(self, tearoff=0)
+        self.modemenu.add_command(label='Input Voltage', state=tk.DISABLED, 
+                                  command=root.change_mode)
+        self.modemenu.add_command(label='Output Voltage', 
+                                  command=root.change_mode)
+        self.add_cascade(label='Mode', menu=self.modemenu)
 
 class BDFrame(tk.Frame):
     '''Frame with title and border'''
@@ -389,10 +390,13 @@ class MainNotebook(ttk.Notebook):
         self.min_Input.grid(row=1, column=1)
         #Scaled Units Frame
         self.sir_ScaledU = BDFrame(self.sirange_frame, 'Scaled Units')
-        self.sir_ScaledU.grid(row=0, column=2, rowspan=2, padx=10, pady=5)
+        self.sir_ScaledU.grid(row=0, column=2, rowspan=2, padx=10, pady=5, sticky='we')
         scaledUnits_frame = tk.Frame(self.sir_ScaledU)
         scaledUnits_frame.pack(padx=10, pady=10, fill=tk.BOTH)
-        tk.OptionMenu(scaledUnits_frame, interface.scaled_units, 'volts').pack()
+        ScUnits = tk.OptionMenu(scaledUnits_frame, interface.scaled_units, 
+                                'volts')
+        ScUnits.config(width=25)
+        ScUnits.pack()
 
         #Time Setting Frame
         self.acq_label = tk.Label(ts_frame, text='Acquisition Mode', 
@@ -467,11 +471,13 @@ class MainNotebook(ttk.Notebook):
         # Analog Window
         tk.Label(self.stt_tg_widgets[1], text='Window Top', 
                  anchor='w').grid(row=0, column=0, padx=5, sticky='we')
-        tk.Entry(self.stt_tg_widgets[1], textvariable=interface.stt_window_top,
+        tk.Entry(self.stt_tg_widgets[1], 
+                 textvariable=interface.stt_trigger_wtop,
                  justify='right').grid(row=1, column=0, padx=5, sticky='we')
         tk.Label(self.stt_tg_widgets[1], text='Window Bottom', 
                  anchor='w').grid(row=0, column=1, padx=5, sticky='we')
-        tk.Entry(self.stt_tg_widgets[1], textvariable=interface.stt_window_bot, 
+        tk.Entry(self.stt_tg_widgets[1],
+                 textvariable=interface.stt_trigger_wbot, 
                  justify='right').grid(row=1, column=1, padx=5, sticky='we')
         tk.Label(self.stt_tg_widgets[1], text='Trigger Condition', 
                  anchor='w').grid(row=0, column=2, padx=5, sticky='we')
@@ -522,7 +528,7 @@ class MainNotebook(ttk.Notebook):
                                             )
                                    )
         self.ref_tg_widgets.append(tk.Entry(ref_tgType_frame, 
-                                    textvariable=interface.preTriggerSamples)
+                                    textvariable=interface.ref_trigger_presamp)
                                    )
 
         ## Analog Edge
@@ -544,12 +550,12 @@ class MainNotebook(ttk.Notebook):
         tk.Label(self.ref_tg_widgets[1], text='Window Top', 
                  anchor='w').grid(row=0, column=0, padx=5, sticky='we')
         tk.Entry(self.ref_tg_widgets[1], 
-                 textvariable=interface.ref_window_top,
+                 textvariable=interface.ref_trigger_wtop,
                  justify='right').grid(row=1, column=0, padx=5, sticky='we')
         tk.Label(self.ref_tg_widgets[1], text='Window Bottom', 
                  anchor='w').grid(row=0, column=1, padx=5, sticky='we')
         tk.Entry(self.ref_tg_widgets[1],
-                 textvariable=interface.ref_window_bot, 
+                 textvariable=interface.ref_trigger_wbot, 
                  justify='right').grid(row=1, column=1, padx=5, sticky='we')
         tk.Label(self.ref_tg_widgets[1], text='Trigger Condition', 
                  anchor='w').grid(row=0, column=2, padx=5, sticky='we')
@@ -623,10 +629,10 @@ class MainNotebook(ttk.Notebook):
         tk.Label(self.file_frame, text='File Path', 
                  anchor='w').grid(padx=5, sticky='we')
         tk.Entry(self.file_frame,
-                 textvariable=interface.TDMS_filepath).grid(padx=5, 
-                                                            sticky='we')
+                 textvariable=interface.TDMS_filepath,
+                 width=70).grid(padx=5, sticky='we', columnspan=3)
         tk.Button(self.file_frame, text='Search', 
-                  command=self.search_file).grid(row=1, column=1)
+                  command=self.search_file).grid(row=1, column=3, sticky='e')
         tk.Checkbutton(self.file_frame, text='Append data if file exists', 
                        variable=interface.append_data).grid(padx=5, sticky='w')
         tk.Label(self.file_frame, text='Logging Mode', 
@@ -676,7 +682,8 @@ class MainNotebook(ttk.Notebook):
         dev_channel = tk.StringVar(self.root, value='ai0')
         channels_numbers = ['ai{}'.format(str(i)) for i in range(10)]
         tk.OptionMenu(add_window, dev_channel, *channels_numbers).pack()
-        tk.Button(add_window, text='add channel', command=add_chan_function).pack()
+        tk.Button(add_window, text='add channel', 
+                  command=add_chan_function).pack()
 
     def remove_channel(self):
         index = self.lb.curselection()[0]
@@ -787,10 +794,11 @@ class MainNotebook(ttk.Notebook):
 
     def search_file(self):
         self.root.TDMS_filepath.set(filedialog.asksaveasfilename(
-              title = 'Select file', filetypes = (('TDMS files','*.tdms'),
-                                                  ('TDM files','*.tdm'),
-                                                  ('all files','*.*')
-                                                  )))
+                                    title = 'Select file', 
+                                    defaultextension='.tdms',
+                                    filetypes = (('TDMS files','*.tdms'),
+                                                 ('TDM files','*.tdm'),
+                                                 ('all files','*.*'))))
 
 def assistant(device_name):
     Interface.device_name = device_name
@@ -801,10 +809,12 @@ def assistant(device_name):
             interface.timeout.get())
 
 if __name__ == '__main__':
+    task = Task()
     Interface.samples_to_read = 100
     Interface.device_name = 'Dev3'
     interface = Interface()
     interface.mainloop()
+    task.close()
 
 
 
