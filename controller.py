@@ -1,12 +1,25 @@
-import tkinter as tk
-from tkinter import ttk, filedialog
+"""This module offers tool to control a NI-DAQ in a simpler way than by
+using the nidaqmx library. 
+
+The following example shows how to create a task, add a channel and read 
+it::
+
+    import controller
+
+    task = controller.Task()
+    task.add_channel("Dev1/ai1")
+    task.config()
+    r = task.read()
+    task.close() 
+"""
+
+__all__ = ['Task']
+__version__ = '0.1.1'
+__author__ = 'Flavio Moraes'
+
 import nidaqmx
-import nidaqmx.stream_readers
 import nidaqmx.constants as cts
-import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
-import json
 
 # A dictionary to convert string inputs into nidaqmx constants
 dict_ = {'Rising': cts.Slope.RISING,
@@ -22,32 +35,49 @@ dict_ = {'Rising': cts.Slope.RISING,
          'open': cts.LoggingOperation.OPEN_OR_CREATE,
          }
 
-class _Config(object):
+
+class _Config():
     """Support class to tkinter OptionMenu, that can keep not only
     selected value but also a list of valid options.
     """
     def __init__(self, value, *options):
-        self.__value = value
+        self.value = value
         self.options = list(options)
     
-    def set(self, value: str):
-        self.__value = value
+    def set(self, value):
+        self.value = value
 
     def get(self):
-        return self.__value
+        return self.value
 
     def __repr__(self):
-        return self.__value.__repr__()
+        return self.value.__repr__()
 
     def __eq__(self, other):
-        return self.__value == other
+        return self.value == other
 
+class _Setter():
+    """This class define a setter to the Config class so it works as a
+    property of the Taks, in a way that by doing `prop = 1` the program 
+    will acctualy runs `prop.value = 1` preventing the user to change 
+    the type of a `_Config` instance.
+    """
+    def __set_name__(self, owner, name):
+        self.public_name = name
+        self.private_name = '_' + name
+
+    def __set__(self, obj, value):
+        if self.public_name not in obj.__dict__:
+            obj.__dict__[self.public_name] = value
+        else:
+            obj.__dict__[self.public_name].value = value
         
+
 class _RawTrigger(object):
     """Support class for start and reference triggers"""
     def __init__(self):
         self.source = _Config('APFI0', 'APFI0', 'APFI1')
-        self.type = _Config('<None>', '<None>', 'Analog Edge', 
+        self.ttype = _Config('<None>', '<None>', 'Analog Edge', 
                             'Analog Window', 'Digital Edge')
         self.slope = _Config('Rising', 'Rising', 'Falling')
         self.level = _Config(0)
@@ -57,6 +87,16 @@ class _RawTrigger(object):
                                  'Entering Window', 'Leaving Window')
         self.edge = _Config('Rising', 'Rising', 'Falling')
 
+    source = _Setter()
+    ttype = _Setter()
+    slope = _Setter()
+    level = _Setter()
+    wtop = _Setter()
+    wbot = _Setter()
+    condition = _Setter()
+    edge = _Setter() 
+
+
 class StartTrigger(_RawTrigger):
     """Start trigger configuration"""
     def __init__(self):
@@ -64,6 +104,7 @@ class StartTrigger(_RawTrigger):
 
     def __repr__(self):
         return 'Start Trigger'
+
 
 class RefTrigger(_RawTrigger):
     """Reference trigger configuration"""
@@ -74,6 +115,9 @@ class RefTrigger(_RawTrigger):
 
     def __repr__(self):
         return 'Reference Trigger'
+
+    presamp = _Setter()
+
 
 class _ChannelList(list):
     """A singleton list of channels to be added to the task 
@@ -112,6 +156,7 @@ class _ChannelList(list):
         self.names.clear()
         super(_ChannelList, self).clear()
 
+
 class Channel(object):
     """Create a Channel to be included in the DAQ Task.
 
@@ -138,6 +183,7 @@ class Channel(object):
                  'min': self.minInputRange}
         return dict_.__repr__()     
 
+
 class Task():
     """
     A simplified version for the nidaqmx Task, which represents a DAQmx Task.
@@ -159,11 +205,10 @@ class Task():
     reserved. In case that tasks were not properly closed and the device cannot
     be accessed anymore, the device may be reseted by the NI-MAX software.
     
-    ***IMPORTANT: The Task class is not child of the nidaqmx.Task, thus it 
+    **IMPORTANT**: The Task class is not child of the nidaqmx.Task, thus it 
     does not accept nidaqmx.Task methods, however Taks.nitask does.
     """
     def __init__(self):
-        super(Task, self).__init__()
         self.nitask = None
         ##Setting Variables
         self.clist = _ChannelList()
@@ -174,7 +219,7 @@ class Task():
                                    '1 Sample (HW Timed)', 
                                    'N Samples', 
                                    'Continuous Samples')
-        self.samples_per_channel = _Config(1000)
+        self.samples = _Config(1000)
         self.rate = _Config(10000)
         ## Triggering Variables
         self.stt_trigger = StartTrigger()
@@ -193,7 +238,33 @@ class Task():
         self.sample_per_file = _Config(0)
         self.span = _Config(None)
 
+    acquisition_mode = _Setter()
+    samples = _Setter()
+    rate = _Setter()
+    timeout = _Setter()
+    clock_type = _Setter()
+    clock_source = _Setter()
+    active_edge = _Setter()
+    tdmsLogging = _Setter()
+    tdmsFilepath = _Setter()
+    append_data = _Setter()
+    logging_mode = _Setter()
+    group_name = _Setter()
+    sample_per_file = _Setter()
+    span = _Setter()
+
     def add_channel(self, cname, *, maxInputRange=10, minInputRange=-10):
+        """Add a channel to the class, return the added channel.
+        
+        :param cname: Name of the channel to be added
+        :param maxInputRange: The channel maximum input range
+        :param minInputRange: The channel minimum input range
+        :type cname: str
+        :type maxInputRange: int
+        :type minInputRange: int
+        :rtype: :class:`controller.Channel`
+
+        """
         channel = Channel(self.clist, cname, maxInputRange, minInputRange)
         if 'ai' in cname:
             channel.type = 'analog input'
@@ -230,38 +301,38 @@ class Task():
             self.nitask.timing.cfg_samp_clk_timing(
                 self.rate.get(),
                 sample_mode=dict_[self.acquisition_mode.get()],
-                samps_per_chan=self.samples_per_channel.get())
+                samps_per_chan=self.samples.get())
         # Set start trigger configuration
-        if self.stt_trigger.type == 'Analog Edge':
+        if self.stt_trigger.ttype == 'Analog Edge':
             self.nitask.triggers.start_trigger.cfg_anlg_edge_start_trig(
                 trigger_source=self.stt_trigger.source.get(),
                 trigger_slope=dict_[self.stt_trigger.slope.get()],
                 trigger_level=self.stt_trigger.level.get())
-        elif self.stt_trigger.type == 'Analog Window':
+        elif self.stt_trigger.ttype == 'Analog Window':
             self.nitask.triggers.start_trigger.cfg_anlg_window_start_trig(
                 trigger_source=self.stt_trigger.source.get(),
                 window_top=self.stt_trigger.window_top.get(),
                 window_bottom=self.stt_trigger.window_botget(),
                 trigger_when=dict_[self.stt_trigger.condition.get()])
-        elif self.stt_trigger.type == 'Digital Edge':
+        elif self.stt_trigger.ttype == 'Digital Edge':
             self.nitask.triggers.start_trigger.cfg_dig_edge_start_trig(
                 trigger_source=self.stt_trigger.source.get(),
                 trigger_edge=dict_[self.stt_trigger.edge.get()])
         # Set reference trigger configuration
-        if self.ref_trigger.type == 'Analog Edge':
+        if self.ref_trigger.ttype == 'Analog Edge':
             self.nitask.triggers.reference_trigger.cfg_anlg_edge_ref_trig(
                 trigger_source=self.ref_trigger.source.get(),
                 pretrigger_samples=self.ref_trigger.preTriggerSamples.get(),
                 trigger_slope=dict_[self.ref_trigger.slope.get()],
                 trigger_level=self.ref_trigger.level.get())
-        elif self.ref_trigger.type == 'Analog Window':
+        elif self.ref_trigger.ttype == 'Analog Window':
             self.nitask.triggers.reference_trigger.cfg_anlg_window_ref_trig(
                 trigger_source=self.ref_trigger.source.get(),
                 window_top=self.ref_trigger.window_top.get(),
                 window_bottom=self.ref_trigger.window_bot.get(),
                 pretrigger_samples=self.ref_trigger.preTriggerSamples.get(),
                 trigger_when=dict_[self.ref_trigger.condition.get()])
-        elif self.ref_trigger.type == 'Digital Edge':
+        elif self.ref_trigger.ttype == 'Digital Edge':
             self.nitask.triggers.reference_trigger.cfg_dig_edge_ref_trig(
                 trigger_source=self.ref_trigger.source.get(),
                 pretrigger_samples=self.ref_trigger.preTriggerSamples.get(),
@@ -286,7 +357,7 @@ class Task():
             raise TaskError('Task must be configured before read. Try to use '\
                             'task.config() before task.read()')
         r = self.nitask.read(
-            number_of_samples_per_channel=self.samples_per_channel.get(),
+            number_of_samples_per_channel=self.samples.get(),
             timeout=self.timeout.get())
         return np.array(r)
 
@@ -299,7 +370,7 @@ class Task():
                 error = TaskError('buffer size is defined to {} by default. '\
                     'Try to increase the value of samples_per_channel or '\
                     'configure timing to on_demand with task.config(timing='\
-                    '"on_demand")'.format(self.samples_per_channel))
+                    '"on_demand")'.format(self.samples))
             else: 
                 error=err
         if error:
@@ -325,23 +396,21 @@ class Task():
             self.nitask.close()
             self.nitask = None
 
+
 class TaskError(Exception):
     def __init__(self, message):
         # self.expression = expression
         self.message = message
-        
+
 
 if __name__ == '__main__':
-    task=Task()
-    # print(task.__dict__)
-    # print(task.acquisition_mode.options)
-    task.add_channel('dev3/ai0')
-    task.add_channel('dev3/ai1')
-    task.config()
-    task.read()
-    channel = task.nitask.channels
-    print(task.nitask.channels.chan_type)
-    task.config()
-
-    print(channel.name)
-    task.close()
+    task = Task()
+    # task.add_channel("Dev3/ai1")
+    print(task.samples.value)
+    task.samples = 10
+    task.rate = 50
+    print(task.samples.value)
+    print(task.rate.value)
+#     # task.config()
+#     # r = task.read()
+#     # task.close()

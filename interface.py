@@ -52,7 +52,7 @@ class Interface(tk.Tk):
         self.rate = tk.StringVar(self, value=Interface.rate)
         # Start trigger
         self.stt_trigger_source = tk.StringVar(self, value='APFI0')
-        self.stt_trigger_type = tk.StringVar(self, value='<None>')
+        self.stt_trigger_ttype = tk.StringVar(self, value='<None>')
         self.stt_trigger_slope = tk.StringVar(self, value='Rising')
         self.stt_trigger_level = tk.StringVar(self, value='0')
         self.stt_trigger_wtop = tk.StringVar(self, value='0')
@@ -62,7 +62,7 @@ class Interface(tk.Tk):
         self.stt_trigger_edge = tk.StringVar(self, value='Rising')
         # Reference Trigger
         self.ref_trigger_source = tk.StringVar(self, value='APFI0')
-        self.ref_trigger_type = tk.StringVar(self, value='<None>')
+        self.ref_trigger_ttype = tk.StringVar(self, value='<None>')
         self.ref_trigger_slope = tk.StringVar(self, value='Rising')
         self.ref_trigger_level = tk.StringVar(self, value='0')
         self.ref_trigger_wtop = tk.StringVar(self, value='0')
@@ -90,10 +90,10 @@ class Interface(tk.Tk):
         self.scaled_units = tk.StringVar(self, value='Volts')
 
         self.variables = ['acquisition_mode', 'samples_to_read', 'rate', 
-            'stt_trigger_source', 'stt_trigger_type', 'stt_trigger_slope', 
+            'stt_trigger_source', 'stt_trigger_ttype', 'stt_trigger_slope', 
             'stt_trigger_level', 'stt_trigger_wtop', 'stt_trigger_wbot', 
             'stt_trigger_condition', 'stt_trigger_edge', 'ref_trigger_source', 
-            'ref_trigger_type', 'ref_trigger_slope', 'ref_trigger_level', 
+            'ref_trigger_ttype', 'ref_trigger_slope', 'ref_trigger_level', 
             'ref_trigger_wtop', 'ref_trigger_wbot', 'ref_trigger_condition', 
             'ref_trigger_edge', 'ref_trigger_presamp', 'timeout', 'clock_type', 
             'clock_source', 'active_edge', 'TDMSLogging', 'TDMS_filepath', 
@@ -130,7 +130,7 @@ class Interface(tk.Tk):
                     variable = key[12:]
                     trigger.__dict__[variable].set(value)
                 elif key in vars(task):
-                    task.__dict__[key].set(value)
+                    task.__dict__[key].set(value = value)
         task.config()
 
     def run(self):
@@ -186,16 +186,18 @@ class Interface(tk.Tk):
         file.write(task.clist.__repr__())
         file.close()
 
-    def open_task(self):
-        path=filedialog.askopenfilename(title='Select file', 
-                                        filetypes=(('task','*.task'),
-                                                   ('all files','*.*')))
-        file = open(path, 'r')
-        data = file.readline().replace("'",'"')
-        for key, value in json.loads(data).items():
-            self.__dict__[key].set(value)
-        channels = file.readline().replace("'",'"')
-        file.close()
+    def open_task(self, path=None):
+        if not path:
+            path=filedialog.askopenfilename(title='Select file', 
+                                            filetypes=(('task','*.task'),
+                                                       ('all files','*.*')))
+        if not path:
+            return 1
+        with open(path, 'r') as file:
+            data = file.readline().replace("'",'"')
+            for key, value in json.loads(data).items():
+                self.__dict__[key].set(value)
+            channels = file.readline().replace("'",'"')
         task.clist.clear()
         task.importChannels(json.loads(channels))
         self.notebook.lb.delete(0, tk.END)
@@ -205,6 +207,7 @@ class Interface(tk.Tk):
         self.min_InputRange.set('')
         self.notebook.channel_update = True
         self.notebook.selected_channel=None
+        self.notebook.select(self.notebook.tab1)
 
     def change_mode(self):
         if self.mode == 'ai':
@@ -310,7 +313,8 @@ class MainNotebook(ttk.Notebook):
             root.update()
             height = self.tb2_StartTrigger.winfo_height()
             width = self.tb2_StartTrigger.winfo_width()
-            self.stt_tg_widgets[0].pack_forget()
+            if root.stt_trigger_ttype.get() =='<None>':
+                self.stt_tg_widgets[0].pack_forget()
             self.tb2_StartTrigger.pack_propagate(False)
             self.tb2_StartTrigger['height'] = height
             self.tb2_RefTrigger.pack_propagate(False)
@@ -321,7 +325,7 @@ class MainNotebook(ttk.Notebook):
                 self.tb2_RefTrigger.set_title()
             if interface.acquisition_mode.get() == 'Continuous Samples':
                 self.ref_TgOptions['state'] = tk.DISABLED
-                interface.ref_trigger_type.set('<None>')
+                interface.ref_trigger_ttype.set('<None>')
                 self.refTriggerChanged('')
             else:
                 self.ref_TgOptions['state'] = tk.NORMAL
@@ -438,18 +442,24 @@ class MainNotebook(ttk.Notebook):
         stt_tgType_frame.pack(fill=tk.BOTH)
         tk.Label(stt_tgType_frame, text='Trigger Type', 
                  anchor='w').grid(row=0, column=0, padx=5, sticky='we')
-        TgOptions = tk.OptionMenu(stt_tgType_frame, interface.stt_trigger_type, 
-                                  *task.stt_trigger.type.options, 
-                                  command=self.triggerChanged)
-        TgOptions.config(width=15)
-        TgOptions.grid(row=1, column=0, padx=5, sticky='we')
+        self.TgOptions = tk.OptionMenu(stt_tgType_frame, 
+                                      interface.stt_trigger_ttype, 
+                                      *task.stt_trigger.ttype.options, 
+                                      command=self.triggerChanged
+                                      )
+        self.TgOptions.config(width=15)
+        self.TgOptions.grid(row=1, column=0, padx=5, sticky='we')
 
         self.stt_tg_widgets = [tk.Frame(st_frame) for i in range(3)]
         self.stt_tg_widgets.append(tk.Label(stt_tgType_frame,
-                                   text='Trigger Source', anchor='w'))
+                                            text='Trigger Source',
+                                            anchor='w'
+                                            )
+                                   )
         self.stt_tg_widgets.append(tk.OptionMenu(stt_tgType_frame, 
                                             interface.stt_trigger_source, 
-                                            *task.stt_trigger.source.options))
+                                            *task.stt_trigger.source.options)
+                                   )
         self.stt_tg_widgets[-1].config(width=21)
 
         # Analog Edge
@@ -504,8 +514,8 @@ class MainNotebook(ttk.Notebook):
         tk.Label(ref_tgType_frame, text='Trigger Type',
                  anchor='w').grid(row=0, column=0, padx=5, sticky='we')
         self.ref_TgOptions = tk.OptionMenu(ref_tgType_frame, 
-                                           interface.ref_trigger_type, 
-                                           *task.ref_trigger.type.options, 
+                                           interface.ref_trigger_ttype, 
+                                           *task.ref_trigger.ttype.options, 
                                            command=self.refTriggerChanged
                                            )
         self.ref_TgOptions.config(width=15)
@@ -536,7 +546,8 @@ class MainNotebook(ttk.Notebook):
                  anchor='w').grid(row=0, column=0, padx=5, sticky='we')
         ref_slope_menu = tk.OptionMenu(self.ref_tg_widgets[0], 
                                        interface.ref_trigger_slope,
-                                       *task.ref_trigger.slope.options)
+                                       *task.ref_trigger.slope.options
+                                       )
         ref_slope_menu.config(width=11)
         ref_slope_menu.grid(row=1, column=0, padx=5, sticky='we')
         tk.Label(self.ref_tg_widgets[0], text='Level', 
@@ -713,19 +724,25 @@ class MainNotebook(ttk.Notebook):
             channel.minInputRange = int(interface.min_InputRange.get())
         return True
 
+    def update_channels(self):
+        self.lb.delete(0, tk.END)
+        self.lb.insert(tk.END, *task.clist.names)
+
     def triggerChanged(self, event):
         new_choices = ['APFI0', 'APFI1'] + task.clist.names
         source = interface.stt_trigger_source.get()
         for widget in self.stt_tg_widgets:
             widget.pack_forget()
             widget.grid_remove()
-        trigger_type = interface.stt_trigger_type.get()
+        trigger_type = interface.stt_trigger_ttype.get()
         if trigger_type != '<None>':
             self.stt_tg_widgets[3].grid(row=0, column=1, padx=5, sticky='we')
             interface.stt_trigger_source.set('APFI0')
             self.stt_tg_widgets[4].grid(row=1, column=1, padx=5, sticky='we')
         if trigger_type == 'Analog Edge':
-            self.stt_tg_widgets[0].pack(fill=tk.BOTH)
+            for widget in self.stt_tg_widgets[0].winfo_children():
+                self.stt_tg_widgets[0].pack(fill=tk.BOTH)
+                self.update()
         elif trigger_type == 'Analog Window':
             self.stt_tg_widgets[1].pack(fill=tk.BOTH)
         elif trigger_type == 'Digital Edge':
@@ -745,7 +762,7 @@ class MainNotebook(ttk.Notebook):
         for widget in self.ref_tg_widgets:
             widget.pack_forget()
             widget.grid_remove()
-        trigger_type = interface.ref_trigger_type.get()
+        trigger_type = interface.ref_trigger_ttype.get()
         if trigger_type != '<None>':
             self.ref_tg_widgets[3].grid(row=0, column=1, padx=5, sticky='we')
             interface.ref_trigger_source.set('APFI0')
@@ -811,7 +828,7 @@ def assistant(device_name):
 if __name__ == '__main__':
     task = Task()
     Interface.samples_to_read = 100
-    Interface.device_name = 'Dev3'
+    Interface.device_name = 'Dev1'
     interface = Interface()
     interface.mainloop()
     task.close()
